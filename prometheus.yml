@@ -1,0 +1,19 @@
+global:
+  scrape_interval: 5s # How often to fetch metrics
+
+scrape_configs:
+  - job_name: 'tidb'
+    static_configs:
+      - targets: ['tidb-server:10080']
+
+  - job_name: 'tikv'
+    static_configs:
+      - targets: ['tikv0:20180']
+
+  - job_name: 'pd'
+    static_configs:
+      - targets: ['pd0:2379']
+
+  - job_name: 'ticdc'
+    static_configs:
+      - targets: ['ticdc:8300']

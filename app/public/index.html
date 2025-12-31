@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Node.js Login</title>
+    <style>
+        body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f0f2f5; }
+        .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); width: 300px; }
+        input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { width: 100%; padding: 10px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        .message { margin-top: 10px; text-align: center; font-size: 14px; }
+        #dashboard { display: none; }
+        .toggle-link { text-align: center; display: block; margin-top: 10px; font-size: 12px; color: #007bff; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="container" id="login-container">
+    <h2 style="text-align: center;">Login</h2>
+    <input type="text" id="username" placeholder="Username">
+    <input type="password" id="password" placeholder="Password">
+    <button onclick="login()">Login</button>
+    <div class="message" id="message"></div>
+    <span class="toggle-link" onclick="toggleView('register')">Need an account? Register</span>
+</div>
+
+<div class="container" id="register-container" style="display: none;">
+    <h2 style="text-align: center;">Register</h2>
+    <input type="text" id="reg-username" placeholder="Username">
+    <input type="password" id="reg-password" placeholder="Password">
+    <button onclick="register()">Register</button>
+    <div class="message" id="reg-message"></div>
+    <span class="toggle-link" onclick="toggleView('login')">Have an account? Login</span>
+</div>
+
+<div class="container" id="dashboard">
+    <h2 style="text-align: center;">Welcome!</h2>
+    <p id="welcome-text" style="text-align: center;"></p>
+    <button onclick="logout()" style="background-color: #dc3545;">Logout</button>
+    <button onclick="checkAuth()" style="background-color: #28a745; margin-top: 10px;">Check Auth</button>
+    <div class="message" id="dash-message"></div>
+</div>
+
+<script>
+    const API_URL = 'http://localhost:3001/api';
+
+    function toggleView(view) {
+        document.getElementById('login-container').style.display = view === 'login' ? 'block' : 'none';
+        document.getElementById('register-container').style.display = view === 'register' ? 'block' : 'none';
+        document.getElementById('message').innerText = '';
+        document.getElementById('reg-message').innerText = '';
+    }
+
+    async function register() {
+        const username = document.getElementById('reg-username').value;
+        const password = document.getElementById('reg-password').value;
+        alert("register!!")
+        // try {
+        //     const response = await fetch(`${API_URL}/register`, {
+        //         method: 'POST',
+        //         headers: { 'Content-Type': 'application/json' },
+        //         body: JSON.stringify({ username, password })
+        //     });
+        //     const data = await response.json();
+        //     if (response.ok) {
+        //         document.getElementById('reg-message').style.color = 'green';
+        //         document.getElementById('reg-message').innerText = 'Registered successfully! Please login.';
+        //         setTimeout(() => toggleView('login'), 1500);
+        //     } else {
+        //         document.getElementById('reg-message').style.color = 'red';
+        //         document.getElementById('reg-message').innerText = data.error;
+        //     }
+        // } catch (err) {
+        //     console.error(err);
+        // }
+    }
+
+    async function login() {
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        
+
+        try {
+            const response = await fetch(`${API_URL}/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await response.json();
+            
+            if (response.ok) {
+                localStorage.setItem('token', data.token);
+                alert("login success!!");
+                window.location.href = "user.html";
+            } else {
+                document.getElementById('message').style.color = 'red';
+                document.getElementById('message').innerText = data.error;
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    function showDashboard(username) {
+        document.getElementById('login-container').style.display = 'none';
+        document.getElementById('dashboard').style.display = 'block';
+        document.getElementById('welcome-text').innerText = `Hello, ${username}`;
+    }
+
+    function logout() {
+        localStorage.removeItem('token');
+        location.reload();
+    }
+
+    async function checkAuth() {
+        const token = localStorage.getItem('token');
+        try {
+            const response = await fetch(`${API_URL}/user`, {
+                headers: { 'Authorization': token }
+            });
+            const data = await response.json();
+            document.getElementById('dash-message').innerText = data.message || data.error;
+            document.getElementById('dash-message').style.color = response.ok ? 'green' : 'red';
+        } catch (err) {
+            console.error(err);
+        }
+    }
+</script>
+
+</body>
+</html>

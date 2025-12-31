@@ -1,0 +1,154 @@
+version: '3.8'
+
+services:
+  tidb:
+    image: pingcap/tidb:v7.5.2
+    container_name: tidb-server
+    ports:
+      - "4000:4000"
+    command:
+      - --store=tikv
+      - --path=pd:2379
+    depends_on:
+      pd:
+        condition: service_healthy
+    networks:
+      - pipeline-net
+
+  ticdc:
+    image: pingcap/ticdc:v7.5.2
+    command:
+      - /cdc
+      - server
+      - --pd=http://pd:2379
+      - --addr=0.0.0.0:8300
+      - --advertise-addr=ticdc:8300
+    depends_on:
+      pd:
+        condition: service_healthy
+    networks:
+      - pipeline-net
+
+  cdc-init:
+    image: pingcap/ticdc:v7.5.2
+    container_name: cdc-init
+    depends_on:
+      - pd
+      - tidb
+      - ticdc
+      - kafka
+    networks:
+      - pipeline-net
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+
+        echo "⏳ Waiting for TiCDC to be ready..."
+        until /cdc cli capture list --pd=http://pd:2379 >/dev/null 2>&1; do
+          sleep 5
+        done
+
+        echo "✅ TiCDC is ready"
+
+        echo "🔍 Checking if changefeed already exists..."
+        if /cdc cli changefeed list --pd=http://pd:2379 | grep -q db-changes; then
+          echo "ℹ️  Changefeed already exists, skipping creation"
+          exit 0
+        fi
+
+        echo "🚀 Creating changefeed..."
+        /cdc cli changefeed create \
+          --pd=http://pd:2379 \
+          --sink-uri="kafka://kafka:29092/db-changes?protocol=canal-json"
+
+        echo "🎉 CDC bootstrap completed"
+
+  pd:
+    image: pingcap/pd:v7.5.2
+    container_name: pd
+    ports:
+      - "2379:2379"
+    command:
+      - --name=pd
+      - --data-dir=/data/pd
+      - --client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://pd:2379
+    networks:
+      - pipeline-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2379/pd/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  tikv:
+    image: pingcap/tikv:v7.5.2
+    container_name: tikv-server
+    depends_on:
+      - pd
+    command:
+      - --pd=pd:2379
+      - --data-dir=/data/tikv
+    networks:
+      - pipeline-net
+
+
+  db-init:
+    image: mysql:8.0
+    container_name: db-initializer
+    depends_on:
+      - tidb
+    volumes:
+      - ./db_script:/scripts
+    networks:
+      - pipeline-net
+    entrypoint: 
+      - /bin/bash
+      - -c
+      - |
+        echo "Waiting for TiDB to accept connections..."
+        # Wait for the SQL port to open
+        until mysql -h tidb -P 4000 -u root -e "SELECT 1;" > /dev/null 2>&1; do
+          sleep 2
+        done
+
+  app:
+    build: ./app
+    container_name: node-app
+    ports:
+      - "3000:3000"
+    environment:
+      - DB_HOST=tidb
+      - DB_PORT=4000
+    networks:
+      - pipeline-net
+    # depends_on:
+    #   db-init:
+    #     condition: service_completed_successfully
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka-broker
+    ports:
+      - "9092:9092"
+    networks:
+      - pipeline-net
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:29093'
+      KAFKA_LISTENERS: 'PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk' 
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+# --- THE NETWORK DEFINITION ---
+networks:
+  pipeline-net:
+    driver: bridge

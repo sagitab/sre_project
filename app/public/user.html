@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard</title>
+</head>
+<body>
+    <h1 id="welcome">welcome!!!</h1>
+    <button onclick="logout()">Logout</button>
+
+    <script>
+        // Check if token exists
+        const token = localStorage.getItem('token');
+        if (!token) { window.location.href = 'index.html'; }
+
+        // Fetch user data using the Token in the Header (Assignment Requirement)
+        fetch('/api/user', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        })
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById('welcome').innerText = data.message;
+        });
+
+        async function logout() {
+            const token = localStorage.getItem('token');
+
+            // 1. Call the backend to invalidate the token in TiDB
+            try {
+                await fetch('/api/logout', {
+                    method: 'POST',
+                    headers: { 
+                        'Authorization': `Bearer ${token}` 
+                    }
+                });
+            } catch (err) {
+                console.error("Logout request failed", err);
+            }
+
+            // 2. Clear local storage and redirect
+            localStorage.removeItem('token');
+            window.location.href = 'index.html';
+        }
+    </script>
+</body>
+</html>
